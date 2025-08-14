@@ -1,0 +1,815 @@
+-- LocalScript para StarterPlayerScripts adaptado do script complexo e do exemplo passado
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ContextActionService = game:GetService("ContextActionService")
+
+local Character = player.Character or player.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Configurações do teleporte
+local PLOT_HITBOX = workspace:WaitForChild("Plots"):WaitForChild("eb9e9322-4b07-4d36-9c01-4c74662e6136"):WaitForChild("DeliveryHitbox")
+local TELEPORT_STEP = 6
+local TELEPORT_INTERVAL = 0.1
+
+-- Sons (troque pelos seus preferidos se quiser)
+local CLICK_SOUND_ID = 6026568381 -- som clique suave
+local APPLE_NOTIFICATION_SOUND = 911882698 -- som estilo Apple autentico
+local TELEPORT_LOOP_SOUND = 9118803310 -- som futurista suave
+
+---- FUNÇÕES AUXILIARES -----------------------------------------------------------------
+
+local function createSound(parent, soundId, volume, name, looped)
+    local sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. soundId
+    sound.Volume = volume or 0.3
+    sound.Name = name or "Sound"
+    sound.Looped = looped or false
+    sound.Parent = parent
+    return sound
+end
+
+local function tweenObject(object, goals, time, style, direction)
+    style = style or Enum.EasingStyle.Quad
+    direction = direction or Enum.EasingDirection.Out
+    local tweenInfo = TweenInfo.new(time, style, direction)
+    local tween = TweenService:Create(object, tweenInfo, goals)
+    tween:Play()
+    return tween
+end
+
+-- Cria bordas arredondadas coloridas com preenchimento em frame
+local function createRoundedBorder(frame, thickness, radius)
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1,0,1,0)
+    container.Position = UDim2.new(0,0,0,0)
+    container.Parent = frame
+    local borders = {}
+    local sides = {"Top", "Bottom", "Left", "Right"}
+    local sizes = {
+        Top=UDim2.new(1,0,0,thickness),
+        Bottom=UDim2.new(1,0,0,thickness),
+        Left=UDim2.new(0,thickness,1,0),
+        Right=UDim2.new(0,thickness,1,0)
+    }
+    local positions = {
+        Top=UDim2.new(0,0,0,0),
+        Bottom=UDim2.new(0,0,1,-thickness),
+        Left=UDim2.new(0,0,0,0),
+        Right=UDim2.new(1,-thickness,0,0)
+    }
+    for _,side in ipairs(sides) do
+        local b = Instance.new("Frame")
+        b.Name = side.."Border"
+        b.BackgroundColor3 = Color3.new(1,1,1) -- será sobrescrito animadamente depois
+        b.Size = sizes[side]
+        b.Position = positions[side]
+        b.BorderSizePixel = 0
+        b.Parent = container
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, radius)
+        c.Parent = b
+        borders[side] = b
+    end
+    return borders
+end
+
+local function getRainbowColor(t)
+    local r = math.abs(math.sin(t*2))
+    local g = math.abs(math.sin(t*2+2))
+    local b = math.abs(math.sin(t*2+4))
+    return Color3.new(r,g,b)
+end
+
+---- NOTIFICAÇÃO ESTILO IPHONE -----------------------------------------------------------------
+
+local function createNotifBorders(frame, thickness, radius)
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1,0,1,0)
+    container.Position = UDim2.new(0,0,0,0)
+    container.Parent = frame
+    local borders = {}
+    local sides = {"Top","Bottom","Left","Right"}
+    local sizes = {
+        Top=UDim2.new(1,0,0,thickness),
+        Bottom=UDim2.new(1,0,0,thickness),
+        Left=UDim2.new(0,thickness,1,0),
+        Right=UDim2.new(0,thickness,1,0)
+    }
+    local positions = {
+        Top=UDim2.new(0,0,0,0),
+        Bottom=UDim2.new(0,0,1,-thickness),
+        Left=UDim2.new(0,0,0,0),
+        Right=UDim2.new(1,-thickness,0,0)
+    }
+    for _,side in ipairs(sides) do
+        local b = Instance.new("Frame")
+        b.Name = side.."Border"
+        b.BackgroundColor3 = Color3.new(1,1,1)
+        b.Size = sizes[side]
+        b.Position = positions[side]
+        b.BorderSizePixel = 0
+        b.Parent = container
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, radius)
+        c.Parent = b
+        borders[side] = b
+    end
+    return borders
+end
+
+local function showNotification(text)
+    text = text or "👾 Script executado com sucesso 🦈"
+    
+    local notifFrame = Instance.new("Frame")
+    notifFrame.Size = UDim2.new(0,320,0,70)
+    -- Posicionar no topo da tela com offset
+    notifFrame.Position = UDim2.new(0.5, -160, 0, 10 - 100) -- Começa fora da tela (acima)
+    notifFrame.BackgroundColor3 = Color3.fromRGB(230,230,230)
+    notifFrame.BorderSizePixel = 0
+    notifFrame.Parent = playerGui
+    notifFrame.ZIndex = 1000
+    notifFrame.AnchorPoint = Vector2.new(0,0)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 22)
+    corner.Parent = notifFrame
+
+    local notifBorders = createNotifBorders(notifFrame, 4, 22)
+
+    -- Ícone à esquerda
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0,48,0,48)
+    icon.Position = UDim2.new(0,15,0.5,-24)
+    icon.BackgroundTransparency = 1
+    icon.Parent = notifFrame
+    icon.ZIndex = notifFrame.ZIndex + 1
+    local iconCorner = Instance.new("UICorner")
+    iconCorner.CornerRadius = UDim.new(1,0)
+    iconCorner.Parent = icon
+    icon.Image = "rbxassetid://10861525899" -- tubarão, coloque seu asset se quiser
+
+    -- Texto da notificação
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1,-80,1,0)
+    label.Position = UDim2.new(0, 80, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 22
+    label.TextColor3 = Color3.fromRGB(50,50,50)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.TextWrapped = true
+    label.Parent = notifFrame
+    label.ZIndex = notifFrame.ZIndex + 1
+
+    local sound = createSound(notifFrame, APPLE_NOTIFICATION_SOUND, 0.7)
+    sound:Play()
+
+    -- Animar slide para baixo (entrar)
+    tweenObject(notifFrame, {Position = UDim2.new(0.5, -160, 0, 10)}, 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    -- Bordas animadas RGB
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        local c = getRainbowColor(tick()*3)
+        for _,b in pairs(notifBorders) do
+            b.BackgroundColor3 = c
+        end
+    end)
+
+    wait(3)
+
+    connection:Disconnect()
+
+    -- Animar slide para cima (sair)
+    tweenObject(notifFrame, {Position = UDim2.new(0.5, -160, 0, -90)}, 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    wait(0.5)
+    notifFrame:Destroy()
+end
+
+---- TELEPORTE COM MINI TPs E ESP ----------------------------------------------------------
+local TeleportManager = {}
+do
+    local moving = false
+    local stopMove = false
+    local highlightESP
+    local teleSound
+    local particleEmitter
+
+    local function destroyESP()
+        if highlightESP and highlightESP.Parent then
+            highlightESP:Destroy()
+            highlightESP = nil
+        end
+    end
+
+    local function createESP(targetPart)
+        destroyESP()
+        highlightESP = Instance.new("Highlight")
+        highlightESP.FillColor = Color3.fromRGB(255, 0, 0)
+        highlightESP.FillTransparency = 0.5
+        highlightESP.OutlineColor = Color3.fromRGB(255, 0, 0)
+        highlightESP.OutlineTransparency = 0
+        highlightESP.Adornee = targetPart
+        highlightESP.Parent = workspace
+
+        -- Piscar ESP
+        coroutine.wrap(function()
+            local increasing = true
+            local val = 0
+            while highlightESP and highlightESP.Parent do
+                if increasing then
+                    val = val + 0.03
+                    if val >= 0.5 then increasing = false end
+                else
+                    val = val - 0.03
+                    if val <= 0 then increasing = true end
+                end
+                highlightESP.FillTransparency = val
+                highlightESP.OutlineTransparency = val
+                wait(0.03)
+            end
+        end)()
+    end
+
+    local function hasObstacle(startPos, endPos)
+        local rayDir = endPos - startPos
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Blacklist
+        params.FilterDescendantsInstances = {Character}
+        local rayRes = workspace:Raycast(startPos, rayDir, params)
+        return rayRes ~= nil
+    end
+
+    local function getNextPosition(curPos, targetPos)
+        local dir = (targetPos - curPos).Unit
+        local nextPos = curPos + dir * TELEPORT_STEP
+        if hasObstacle(curPos, nextPos) then
+            local upTry = nextPos + Vector3.new(0, TELEPORT_STEP/2, 0)
+            if not hasObstacle(curPos, upTry) then
+                nextPos = upTry
+            else
+                local sideVec = Vector3.new(-dir.Z, 0, dir.X)
+                local sideTry1 = nextPos + sideVec * TELEPORT_STEP
+                local sideTry2 = nextPos - sideVec * TELEPORT_STEP
+                if not hasObstacle(curPos, sideTry1) then
+                    nextPos = sideTry1
+                elseif not hasObstacle(curPos, sideTry2) then
+                    nextPos = sideTry2
+                else
+                    local higher = nextPos + Vector3.new(0, TELEPORT_STEP, 0)
+                    if not hasObstacle(curPos, higher) then
+                        nextPos = higher
+                    else
+                        return nil -- bloqueado
+                    end
+                end
+            end
+        end
+        return nextPos
+    end
+
+    local function startMoveEffects()
+        if teleSound then
+            teleSound:Stop()
+            teleSound:Destroy()
+        end
+        teleSound = createSound(HumanoidRootPart, TELEPORT_LOOP_SOUND, 0.18, "TeleSound", true)
+        teleSound:Play()
+
+        if particleEmitter then
+            particleEmitter.Enabled = false
+            particleEmitter:Destroy()
+            particleEmitter = nil
+        end
+
+        particleEmitter = Instance.new("ParticleEmitter")
+        particleEmitter.Texture = "rbxassetid://258128463"
+        particleEmitter.Rate = 8
+        particleEmitter.Lifetime = NumberRange.new(0.3, 0.5)
+        particleEmitter.Speed = NumberRange.new(0.5, 1)
+        particleEmitter.Rotation = NumberRange.new(0, 360)
+        particleEmitter.RotSpeed = NumberRange.new(-180, 180)
+        particleEmitter.Size = NumberSequence.new(0.2)
+        particleEmitter.Color = ColorSequence.new(Color3.fromRGB(0,255,255))
+        particleEmitter.LightEmission = 0.8
+        particleEmitter.LockedToPart = true
+        particleEmitter.Parent = HumanoidRootPart
+    end
+
+    local function stopMoveEffects()
+        if teleSound then
+            teleSound:Stop()
+            teleSound:Destroy()
+            teleSound = nil
+        end
+        if particleEmitter then
+            particleEmitter.Enabled = false
+            particleEmitter:Destroy()
+            particleEmitter = nil
+        end
+    end
+
+    function TeleportManager:MoveToDeliveryHitbox(callback)
+        if moving then return end
+        moving = true
+        stopMove = false
+
+        createESP(PLOT_HITBOX)
+        startMoveEffects()
+
+        local reached = false
+        while not reached and not stopMove do
+            local curPos = HumanoidRootPart.Position
+            local dist = (PLOT_HITBOX.Position - curPos).Magnitude
+            if dist <= TELEPORT_STEP then
+                HumanoidRootPart.CFrame = CFrame.new(PLOT_HITBOX.Position + Vector3.new(0,3,0))
+                reached = true
+            else
+                local nextPos = getNextPosition(curPos, PLOT_HITBOX.Position + Vector3.new(0,3,0))
+                if nextPos then
+                    HumanoidRootPart.CFrame = CFrame.new(nextPos)
+                else
+                    stopMove = true -- bloqueado, cancela
+                end
+            end
+            wait(TELEPORT_INTERVAL)
+        end
+
+        stopMoveEffects()
+        destroyESP()
+        moving = false
+
+        if callback then
+            callback(stopMove)
+        end
+    end
+
+    function TeleportManager:CancelTeleport()
+        stopMove = true
+    end
+end
+
+---- GUI MÓVEL: CRIAÇÃO E FUNÇÕES ----------------------------------------------------------
+
+local GuiManager = {}
+do
+    local gui, mainFrame, toggleButton, teleportButton, settingsButton, themeToggle, opacitySlider, opacitySliderKnob
+    local draggable, dragInput, dragStart, startPos
+    local rgbSpeed = 3
+    local rgbPhase = 0
+    local isDarkTheme = true
+    local guiEnabled = true
+
+    local themes = {
+        Dark = {
+            Background = Color3.fromRGB(30,30,30),
+            Foreground = Color3.fromRGB(230,230,230),
+            Button = Color3.fromRGB(50,50,50),
+            ButtonHover = Color3.fromRGB(100,100,100)
+        },
+        Light = {
+            Background = Color3.fromRGB(240,240,240),
+            Foreground = Color3.fromRGB(30,30,30),
+            Button = Color3.fromRGB(220,220,220),
+            ButtonHover = Color3.fromRGB(180,180,180)
+        }
+    }
+
+    local function updateThemeColors()
+        local theme = isDarkTheme and themes.Dark or themes.Light
+        mainFrame.BackgroundColor3 = theme.Background
+        for _, btn in pairs({toggleButton, teleportButton, settingsButton, themeToggle}) do
+            btn.BackgroundColor3 = theme.Button
+            btn.TextColor3 = theme.Foreground
+        end
+    end
+
+    local function saveGuiPosition(pos)
+        -- Salvando posição em atributo do jogador para manter entre sessões
+        if typeof(pos)=="UDim2" then
+            player:SetAttribute("CustomGuiPosition", {
+                XScale = pos.X.Scale, XOffset = pos.X.Offset,
+                YScale = pos.Y.Scale, YOffset = pos.Y.Offset
+            })
+        end
+    end
+
+    local function loadGuiPosition()
+        local attr = player:GetAttribute("CustomGuiPosition")
+        if attr then
+            return UDim2.new(attr.XScale or 0.4, attr.XOffset or 0, attr.YScale or 0.5, attr.YOffset or 0)
+        end
+        return UDim2.new(0.4, 0, 0.5, 0)
+    end
+
+    local function makeDraggable(frame)
+        frame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                draggable = true
+                dragInput = input
+                dragStart = input.Position
+                startPos = frame.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        draggable = false
+                        saveGuiPosition(frame.Position)
+                    end
+                end)
+            end
+        end)
+
+        frame.InputChanged:Connect(function(input)
+            if input == dragInput then
+                frame.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + (input.Position.X - dragStart.X),
+                    startPos.Y.Scale, startPos.Y.Offset + (input.Position.Y - dragStart.Y)
+                )
+            end
+        end)
+    end
+
+    local function addButtonEffects(button)
+        -- Aumenta e gira ao mouse hover (PC)
+        button.MouseEnter:Connect(function()
+            tweenObject(button, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset + 10, button.Size.Y.Scale, button.Size.Y.Offset + 6)}, 0.15)
+            tweenObject(button, {Rotation = 15}, 0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            createSound(button, CLICK_SOUND_ID, 0.3):Play()
+        end)
+        button.MouseLeave:Connect(function()
+            tweenObject(button, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset - 10, button.Size.Y.Scale, button.Size.Y.Offset - 6)}, 0.15)
+            tweenObject(button, {Rotation = 0}, 0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+        end)
+
+        -- Touch effects (mobile)
+        button.TouchStarted:Connect(function()
+            tweenObject(button, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset + 10, button.Size.Y.Scale, button.Size.Y.Offset + 6)}, 0.15)
+            tweenObject(button, {Rotation = 15}, 0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            createSound(button, CLICK_SOUND_ID, 0.3):Play()
+        end)
+        button.TouchEnded:Connect(function()
+            tweenObject(button, {Size = UDim2.new(button.Size.X.Scale, button.Size.X.Offset - 10, button.Size.Y.Scale, button.Size.Y.Offset - 6)}, 0.15)
+            tweenObject(button, {Rotation = 0}, 0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+        end)
+    end
+
+    -- Cria o GUI movel principal
+    function GuiManager:CreateGui()
+        gui = Instance.new("ScreenGui")
+        gui.Name = "CustomTeleportGui"
+        gui.ResetOnSpawn = false
+        gui.Parent = playerGui
+
+        mainFrame = Instance.new("Frame")
+        mainFrame.Name = "MainFrame"
+        mainFrame.Size = UDim2.new(0, 260, 0, 180)
+        mainFrame.Position = loadGuiPosition()
+        mainFrame.BackgroundColor3 = themes.Dark.Background
+        mainFrame.BackgroundTransparency = 0.2
+        mainFrame.BorderSizePixel = 0
+        mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+        mainFrame.Parent = gui
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 16)
+        corner.Parent = mainFrame
+
+        makeDraggable(mainFrame)
+
+        toggleButton = Instance.new("TextButton")
+        toggleButton.Name = "ToggleButton"
+        toggleButton.Size = UDim2.new(0, 120, 0, 40)
+        toggleButton.Position = UDim2.new(0.5, -60, 0.2, 0)
+        toggleButton.BackgroundColor3 = themes.Dark.Button
+        toggleButton.TextColor3 = themes.Dark.Foreground
+        toggleButton.Font = Enum.Font.GothamBold
+        toggleButton.TextSize = 20
+        toggleButton.Text = "Ativar"
+        toggleButton.Parent = mainFrame
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 14)
+        toggleCorner.Parent = toggleButton
+        addButtonEffects(toggleButton)
+
+        teleportButton = Instance.new("TextButton")
+        teleportButton.Name = "TeleportButton"
+        teleportButton.Size = UDim2.new(0, 120, 0, 40)
+        teleportButton.Position = UDim2.new(0.5, -60, 0.5, 0)
+        teleportButton.BackgroundColor3 = themes.Dark.Button
+        teleportButton.TextColor3 = themes.Dark.Foreground
+        teleportButton.Font = Enum.Font.GothamBold
+        teleportButton.TextSize = 20
+        teleportButton.Text = "Teleporte"
+        teleportButton.Parent = mainFrame
+        local teleportCorner = Instance.new("UICorner")
+        teleportCorner.CornerRadius = UDim.new(0, 14)
+        teleportCorner.Parent = teleportButton
+        addButtonEffects(teleportButton)
+
+        settingsButton = Instance.new("TextButton")
+        settingsButton.Name = "SettingsButton"
+        settingsButton.Size = UDim2.new(0, 120, 0, 40)
+        settingsButton.Position = UDim2.new(0.5, -60, 0.8, 0)
+        settingsButton.BackgroundColor3 = themes.Dark.Button
+        settingsButton.TextColor3 = themes.Dark.Foreground
+        settingsButton.Font = Enum.Font.GothamBold
+        settingsButton.TextSize = 18
+        settingsButton.Text = "Tema / Opacidade"
+        settingsButton.Parent = mainFrame
+        local settingsCorner = Instance.new("UICorner")
+        settingsCorner.CornerRadius = UDim.new(0, 14)
+        settingsCorner.Parent = settingsButton
+        addButtonEffects(settingsButton)
+
+        -- Painel das configurações escondido inicialmente
+        local settingsPanel = Instance.new("Frame")
+        settingsPanel.Name = "SettingsPanel"
+        settingsPanel.Size = UDim2.new(1, -20, 0, 90)
+        settingsPanel.Position = UDim2.new(0, 10, 1, 10)
+        settingsPanel.BackgroundColor3 = themes.Dark.Button
+        settingsPanel.BackgroundTransparency = 0.15
+        settingsPanel.Visible = false
+        settingsPanel.Parent = mainFrame
+        local settingsPanelCorner = Instance.new("UICorner")
+        settingsPanelCorner.CornerRadius = UDim.new(0, 12)
+        settingsPanelCorner.Parent = settingsPanel
+
+        -- Botão alternar tema
+        local themeLabel = Instance.new("TextLabel")
+        themeLabel.Position = UDim2.new(0, 10, 0, 10)
+        themeLabel.Size = UDim2.new(0, 140, 0, 30)
+        themeLabel.BackgroundTransparency = 1
+        themeLabel.TextColor3 = themes.Dark.Foreground
+        themeLabel.Text = "Tema Claro / Escuro"
+        themeLabel.Font = Enum.Font.GothamSemibold
+        themeLabel.TextSize = 16
+        themeLabel.Parent = settingsPanel
+
+        themeToggle = Instance.new("TextButton")
+        themeToggle.Position = UDim2.new(0, 160, 0, 10)
+        themeToggle.Size = UDim2.new(0, 70, 0, 30)
+        themeToggle.BackgroundColor3 = themes.Dark.Button
+        themeToggle.TextColor3 = themes.Dark.Foreground
+        themeToggle.Text = "Escuro"
+        themeToggle.Font = Enum.Font.GothamSemibold
+        themeToggle.TextSize = 16
+        themeToggle.Parent = settingsPanel
+        local themeToggleCorner = Instance.new("UICorner")
+        themeToggleCorner.CornerRadius = UDim.new(0, 10)
+        themeToggleCorner.Parent = themeToggle
+        addButtonEffects(themeToggle)
+
+        -- Label opacidade
+        local opacityLabel = Instance.new("TextLabel")
+        opacityLabel.Position = UDim2.new(0, 10, 0, 50)
+        opacityLabel.Size = UDim2.new(0, 80, 0, 25)
+        opacityLabel.BackgroundTransparency = 1
+        opacityLabel.TextColor3 = themes.Dark.Foreground
+        opacityLabel.Text = "Opacidade"
+        opacityLabel.Font = Enum.Font.GothamSemibold
+        opacityLabel.TextSize = 14
+        opacityLabel.Parent = settingsPanel
+
+        -- Slider de opacidade simulado
+        opacitySlider = Instance.new("Frame")
+        opacitySlider.Position = UDim2.new(0, 100, 0, 55)
+        opacitySlider.Size = UDim2.new(0, 130, 0, 20)
+        opacitySlider.BackgroundColor3 = themes.Dark.Button
+        opacitySlider.Parent = settingsPanel
+        local sliderCorner = Instance.new("UICorner")
+        sliderCorner.CornerRadius = UDim.new(0, 10)
+        sliderCorner.Parent = opacitySlider
+
+        opacitySliderKnob = Instance.new("Frame")
+        opacitySliderKnob.Size = UDim2.new(0, 18, 0, 18)
+        opacitySliderKnob.Position = UDim2.new(0.8, -9, 0.5, -9)
+        opacitySliderKnob.BackgroundColor3 = themes.Dark.Foreground
+        opacitySliderKnob.Parent = opacitySlider
+        local knobCorner = Instance.new("UICorner")
+        knobCorner.CornerRadius = UDim.new(1,0)
+        knobCorner.Parent = opacitySliderKnob
+
+        -- Lógica de drag para slider opacidade
+        local dragging = false
+        opacitySliderKnob.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+            end
+        end)
+        opacitySlider.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        opacitySlider.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local relX = math.clamp(input.Position.X - opacitySlider.AbsolutePosition.X, 0, opacitySlider.AbsoluteSize.X)
+                local value = relX / opacitySlider.AbsoluteSize.X
+                opacitySliderKnob.Position = UDim2.new(value, -9, 0.5, -9)
+                mainFrame.BackgroundTransparency = 1 - (0.2 + 0.8 * value) -- mínima 0.2, máximo 1 transparência
+            end
+        end)
+
+        -- Eventos dos botões
+        settingsButton.MouseButton1Click:Connect(function()
+            settingsPanel.Visible = not settingsPanel.Visible
+        end)
+
+        themeToggle.MouseButton1Click:Connect(function()
+            isDarkTheme = not isDarkTheme
+            themeToggle.Text = isDarkTheme and "Escuro" or "Claro"
+            updateThemeColors()
+        end)
+
+        toggleButton.MouseButton1Click:Connect(function()
+            guiEnabled = not guiEnabled
+            toggleButton.Text = guiEnabled and "Ativar" or "Desativar"
+            local goalColor = guiEnabled and themes.Dark.Button or Color3.fromRGB(150,0,0)
+            tweenObject(toggleButton, {BackgroundColor3 = goalColor}, 0.3)
+            createSound(toggleButton, CLICK_SOUND_ID, 0.3):Play()
+        end)
+
+        return gui, mainFrame, toggleButton, teleportButton, function() return guiEnabled end
+    end
+
+    function GuiManager:OpenGui()
+        gui.Enabled = true
+        tweenObject(mainFrame, {BackgroundTransparency = 0.2}, 0.3)
+        tweenObject(mainFrame, {Position = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset, 0.5, 0)}, 0.4)
+    end
+
+    function GuiManager:CloseGui()
+        tweenObject(mainFrame, {BackgroundTransparency = 1}, 0.25)
+        tweenObject(mainFrame, {Position = UDim2.new(mainFrame.Position.X.Scale, mainFrame.Position.X.Offset, 1.2, 0)}, 0.35)
+        wait(0.35)
+        gui.Enabled = false
+    end
+end
+
+---- INÍCIO DO SCRIPT ---------------------------------------------------------------------
+
+-- Criar GUI principal de carregamento estilo seu script original
+local function createLoadingGui()
+    local loadingScreenGui = Instance.new("ScreenGui")
+    loadingScreenGui.Name = "LoadingGui"
+    loadingScreenGui.ResetOnSpawn = false
+    loadingScreenGui.Parent = playerGui
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0,400,0,150)
+    mainFrame.Position = UDim2.new(0.5,-200,0.5,-75)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+    mainFrame.BackgroundTransparency = 0.15
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = loadingScreenGui
+    local corner = Instance.new("UICorner", mainFrame)
+    corner.CornerRadius = UDim.new(0,16)
+
+    local borders = createRoundedBorder(mainFrame,6,16)
+
+    local credit = Instance.new("TextLabel")
+    credit.Parent = mainFrame
+    credit.Size = UDim2.new(1,-20,0.25,0)
+    credit.Position = UDim2.new(0,10,0,10)
+    credit.BackgroundTransparency = 1
+    credit.Text = "credit-TraLalaHub"
+    credit.Font = Enum.Font.Gotham
+    credit.TextSize = 20
+    credit.TextColor3 = Color3.new(1,1,1)
+    credit.TextTransparency = 0.4
+    credit.TextXAlignment = Enum.TextXAlignment.Center
+    credit.TextYAlignment = Enum.TextYAlignment.Center
+
+    local loadingLabel = Instance.new("TextLabel")
+    loadingLabel.Parent = mainFrame
+    loadingLabel.Size = UDim2.new(1,-20,0.25,0)
+    loadingLabel.Position = UDim2.new(0,10,0.25,0)
+    loadingLabel.BackgroundTransparency = 1
+    loadingLabel.Text = "Carregando"
+    loadingLabel.Font = Enum.Font.GothamBold
+    loadingLabel.TextSize = 36
+    loadingLabel.TextColor3 = Color3.new(1,1,1)
+    loadingLabel.TextStrokeTransparency = 0
+    loadingLabel.TextStrokeColor3 = Color3.new(0,0,0)
+    loadingLabel.TextXAlignment = Enum.TextXAlignment.Center
+    loadingLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+    local barBg = Instance.new("Frame", mainFrame)
+    barBg.Size = UDim2.new(0.8,0,0,30)
+    barBg.Position = UDim2.new(0.1,0,0.7,0)
+    barBg.BackgroundColor3 = Color3.fromRGB(50,50,50)
+    barBg.BorderSizePixel = 0
+    local barBgCorner = Instance.new("UICorner", barBg)
+    barBgCorner.CornerRadius = UDim.new(0,15)
+
+    local barFill = Instance.new("Frame", barBg)
+    barFill.Size = UDim2.new(0,0,1,0)
+    barFill.Position = UDim2.new(0,0,0,0)
+    barFill.BackgroundColor3 = Color3.fromRGB(0,180,255)
+    barFill.BorderSizePixel = 0
+    local barCorner = Instance.new("UICorner", barFill)
+    barCorner.CornerRadius = UDim.new(0,15)
+
+    local startTime = tick()
+    local totalTime = 3
+
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        local elapsed = tick() - startTime
+        local progress = math.clamp(elapsed / totalTime, 0, 1)
+
+        local c = getRainbowColor(tick())
+        for _,b in pairs(borders) do
+            b.BackgroundColor3 = c
+        end
+
+        barFill.Size = UDim2.new(progress, 0, 1, 0)
+        barCorner.CornerRadius = progress < 1 and UDim.new(0,15) or UDim.new(0,0)
+
+        if progress >= 1 then
+            conn:Disconnect()
+            wait(0.5)
+            loadingScreenGui:Destroy()
+        end
+    end)
+end
+
+-- Criar botão tubarão, que abre o GUI móvel com as funções principais
+local function createSharkButton()
+    local screenGui = playerGui:FindFirstChild("CustomTeleportGui") or Instance.new("ScreenGui")
+    screenGui.Name = "SharkButtonGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = playerGui
+
+    local button = Instance.new("ImageButton")
+    button.Name = "SharkButton"
+    button.Size = UDim2.new(0, 50, 0, 50)
+    button.Position = UDim2.new(0.95, -60, 0.85, -50)
+    button.AnchorPoint = Vector2.new(1,1)
+    button.BackgroundTransparency = 1
+    button.Parent = screenGui
+    local corner = Instance.new("UICorner", button)
+    corner.CornerRadius = UDim.new(1,0)
+
+    button.Image = "rbxassetid://10861525899" -- asset tubarão (troque se quiser)
+
+    return button
+end
+
+---- INICIALIZAÇÃO ----------------------------------------------------------------------
+
+createLoadingGui()
+showNotification("🐬 Script executado com sucesso!")
+
+local sharkButton = createSharkButton()
+local customGui = nil
+local mainFrame
+local toggleButton
+local teleportButton
+local isActivated
+
+sharkButton.MouseButton1Click:Connect(function()
+    if customGui then
+        customGui.Enabled = not customGui.Enabled
+    else
+        customGui, mainFrame, toggleButton, teleportButton, isActivated = GuiManager:CreateGui()
+        GuiManager:OpenGui()
+
+        teleportButton.MouseButton1Click:Connect(function()
+            if isActivated() then
+                TeleportManager:MoveToDeliveryHitbox(function(canceled)
+                    if canceled then
+                        playerGui:SetCore("ChatMakeSystemMessage", {
+                            Text = "[Teleport] Teleporte cancelado.";
+                            Color = Color3.new(1,0.2,0.2);
+                        })
+                    else
+                        playerGui:SetCore("ChatMakeSystemMessage", {
+                            Text = "[Teleport] Chegou ao destino!";
+                            Color = Color3.new(0.2,1,0.2);
+                        })
+                    end
+                end)
+            else
+                playerGui:SetCore("ChatMakeSystemMessage", {
+                    Text = "[Teleport] Ative a função antes.";
+                    Color = Color3.new(1,0.5,0);
+                })
+            end
+        end)
+    end
+end)
+
+-- Permitir cancelar teleporte com ESC no PC ou botão B no mobile
+ContextActionService:BindAction("CancelTeleport", function(name, state)
+    if state == Enum.UserInputState.Begin then
+        TeleportManager:CancelTeleport()
+        return Enum.ContextActionResult.Sink
+    end
+    return Enum.ContextActionResult.Pass
+end, false, Enum.KeyCode.Escape, Enum.KeyCode.ButtonB)
